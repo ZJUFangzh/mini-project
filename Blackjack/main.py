@@ -2,7 +2,7 @@ import simplegui
 import random
 
 CARD_SIZE = (72, 96)
-CARD_CENTR = (36, 48)
+CARD_CENTER = (36, 48)
 card_images = simplegui.load_image(
     "http://storage.googleapis.com/codeskulptor-assets/cards_jfitz.png")
 
@@ -50,11 +50,11 @@ class Card(object):
         return self.rank
 
     def draw(self, canvas, pos):
-        card_loc = ((CARD_CENTR[0] + CARD_SIZE[0] * RANKS.index(self.rank)),
-                    CARD_CENTR[1] + CARD_SIZE[1] * SUITS.index(self.suit))
+        card_loc = ((CARD_CENTER[0] + CARD_SIZE[0] * RANKS.index(self.rank)),
+                    CARD_CENTER[1] + CARD_SIZE[1] * SUITS.index(self.suit))
 
         canvas.draw_image(card_images, card_loc, CARD_SIZE, [
-                          pos[0] + CARD_CENTR[0], pos[1] + CARD_CENTR[1]], CARD_SIZE)
+                          pos[0] + CARD_CENTER[0], pos[1] + CARD_CENTER[1]], CARD_SIZE)
 
 
 class Hand(object):
@@ -70,7 +70,7 @@ class Hand(object):
         self.aceNum = 0
         self.status = 'PLAY'
 
-    def add_card(self):
+    def add_card(self, card):
         self.cardlist.append(card)
         if card.get_rank() == 'A':
             self.aceNum += 1
@@ -251,7 +251,7 @@ def stand():
         dealer_add()
 
 
-def draw():
+def draw(canvas):
     global dealer, players, outcome, score, message, deck, round_num, current_player
     canvas.draw_text('Blackjack', [220, 30], 20, 'Black')
     canvas.draw_text('Dealer', [20, 50], 15, 'Black')
