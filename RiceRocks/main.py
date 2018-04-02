@@ -7,6 +7,7 @@ HEIGHT = 600
 score = 0
 lives = 3
 time = 0
+started = False
 
 
 class ImageInfo:
@@ -145,7 +146,7 @@ class Ship(object):
 
 # 射击
     def shoot(self):
-        global a_missile
+        global missile_group
         forward = angle_to_vector(self.angle)
         pos = list(self.pos)
         vel = [0, 0]
@@ -154,8 +155,8 @@ class Ship(object):
         pos[1] += self.vel[1] + self.radius * forward[1]
         vel[0] = forward[0] * missile_speed
         vel[1] = forward[1] * missile_speed
-        a_missile = Sprite(pos, vel, self.angle, 0,
-                           missile_image, missile_info, missile_sound)
+        missile_group.add(Sprite(pos, vel, self.angle, 0,
+                                 missile_image, missile_info, missile_sound))
 
 
 # 角度转为向量
@@ -189,17 +190,79 @@ class Sprite(object):
     def draw(self, canvas):
         canvas.draw_image(self.image, self.image_center,
                           self.image_size, self.pos, self.image_size, self.angle)
+        if self.animated:
+            image_tile = (self.age % 24) // 1  # 动画效果 由24个图像组成
+            self.image_center = [
+                self.image_center[0] + image_tile * self.image_size[0], self.image_center[1]]
+        canvas.draw_image(self.image, self.image_center, self.image_size,
+                          self.pos, self.image_size, self.angle)
 
     def update(self):
         self.angle += self.angle_vel
         self.pos[0] = (self.pos[0] + self.vel[0]) % WIDTH
         self.pos[1] = (self.pos[1] + self.vel[1]) % HEIGHT
+        if self.lifespan:
+            if self.age > self.lifespan:
+                return True
+            else:
+                self.age += 1
+        return False
+
+    def collide(self, other_object):
+        if dist(self.pos, other_object.pos) <= self.radius + other_object.radius:
+            return True
+        else:
+            return False
+
+    def get_position(self):
+        return self.pos
+
+    def get_radius(self):
+        return self.radius
+
+
+def group_collide(group, other_object):
+    global explosion_group
+    for sprite in list(group):
+        if sprite.collide(other_object):
+            explosion_group.add(Sprite(sprite.get_position(
+            ), (0, 0), 0, 0, explosion_image, explosion_info, explosion_sound))
+            group.remove(sprite)
+            return True
+        else:
+            return False
+
+
+def group_group_collide(group1, group2):
+    global score
+    for sprite in list(group2):
+        if group_collide(group1, sprite):  # 调用物体与组的碰撞函数
+            group2.remove(sprite)
+            score += 1  # 每击中1次，子弹与星石消失，分数加1
+
+
+# 绘制，放在draw中
+
+
+def process_sprite_group(canvas, group):
+    for sprite in set(group):
+        sprite.draw(canvas)
+        if sprite.update():
+            group.remove(sprite)
 
 
 def rock_spawner():
-    global a_rock
-    a_rock = Sprite([random.randrange(WIDTH), random.randrange(HEIGHT)], [
-                    random.randrange(-1, 1), random.randrange(-1, 1)], 0.05, 0.05, asteroid_image, asteroid_info)
+    global rock_group, started
+    if len(rock_group) < 12 and started:
+        rock_pos = [random.randrange(0, WIDTH), random.randrange(0, HEIGHT)]
+        rock_vel = [random.random() * .6 - .3, random.random() * .6 - .3]
+        rock_avel = random.random() * .2 - .1
+
+    while dist(rock_pos, my_ship.pos) < 60:
+        rock_pos = [random.randrange(0, WIDTH), random.randrange(0, HEIGHT)]
+    a_rock = Sprite(rock_pos, rock_vel, 0, rock_avel,
+                    asteroid_image, asteroid_info)
+    rock_group.add(a_rock)
 
 
 def key_down(key):
@@ -222,8 +285,26 @@ def key_up(key):
         my_ship.set_thrust(False)
 
 
+def click(pos):
+    global started, score, lives, my_ship, rock_group, missile_group
+    center = [WIDTH / 2, HEIGHT / 2]
+    size = splash_info.get_size()
+    inwidth = (center[0] - size[0] / 2) < pos[0] < (center[0] + size[0] / 2)
+    inheight = (center[1] - size[1] / 2) < pos[1] < (center[1] + size[1] / 2)
+    if (not started) and inwidth and inheight:  # 重置多个参数，添加音效
+        started = True
+        score = 0
+        lives = 3
+        timer.start()
+        soundtrack.rewind()
+        soundtrack.play
+        my_ship = Ship([WIDTH / 2, HEIGHT / 2], [0, 0],
+                       0, ship_image, ship_info)
+
+
 def draw(canvas):
-    global time
+
+    global time, started, lives, rock_group
     time += 1
     wtime = (time / 4) % WIDTH
     center = debris_info.get_center()
@@ -234,29 +315,41 @@ def draw(canvas):
                       (wtime - WIDTH / 2, HEIGHT / 2), (WIDTH, HEIGHT))
     canvas.draw_image(debris_image, center, size,
                       (wtime + WIDTH / 2, HEIGHT / 2), (WIDTH, HEIGHT))
-
+    canvas.draw_text('Lives:' + str(lives), (50, 50), 28, "Red")
+    canvas.draw_text('Score:' + str(score), (625, 50), 28, "Red")
     # draw ship and sprites
     my_ship.draw(canvas)
-    a_rock.draw(canvas)
-    a_missile.draw(canvas)
-
+    process_sprite_group(canvas, rock_group)
+    process_sprite_group(canvas, missile_group)
+    process_sprite_group(canvas, explosion_group)
     # update ship and sprites
     my_ship.update()
-    a_rock.update()
-    a_missile.update()
+
+    if group_collide(rock_group, my_ship):
+        lives -= 1
+    group_group_collide(rock_group, missile_group)
+    if lives < 1:
+        started = False
+        rock_group = set([])
+        soundtrack.pause()
+        timer.stop()
+    if not started:
+        canvas.draw_image(splash_image, splash_info.get_center(),
+                          splash_info.get_size(), [WIDTH / 2, HEIGHT / 2],
+                          splash_info.get_size())
 
 
 frame = simplegui.create_frame('Asteroid', WIDTH, HEIGHT)
 my_ship = Ship([WIDTH / 2, HEIGHT / 2], [0, 0], 0, ship_image, ship_info)
-a_rock = Sprite([WIDTH / 3, HEIGHT / 3], [1, 1], 0, 0.05,
-                asteroid_image, asteroid_info)  # 0.05秒旋转一下
-a_missile = Sprite([2 * WIDTH / 3, 2 * HEIGHT / 3], [-1, 1],
-                   0, 0, missile_image, missile_info, missile_sound)
+rock_group = set([])
+missile_group = set([])
+explosion_group = set([])
 
 
 frame.set_draw_handler(draw)
 frame.set_keydown_handler(key_down)  # 添加键盘控制
 frame.set_keyup_handler(key_up)
+frame.set_mouseclick_handler(click)
 timer = simplegui.create_timer(1000, rock_spawner)
 timer.start()
 frame.start()
